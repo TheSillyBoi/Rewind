@@ -1,6 +1,13 @@
 # Rewind
-A simple reminder app in order to learn GUIs and the concepts thereof
+A simple reminder app in order to learn GUIs, Storing Data, and the concepts thereof
 
 # THIS IS A WORK IN PROGRESS
 
-The reason behind the name "Rewind" is because it'll move times back or forward automatically(ex: if it's' a reminder to water your plants and you enter that you watered your plants a day early, it'll move the schedule back a day to make up for that)
+
+
+
+
+
+
+
+*The end goal is to make it so there can be child reminders, so if there's two reminders that are both connected, one can be a child reminder of the other, so if I have to, for example, pick up groceries after work, if I say I left work early, it'll remind me to go to the grocery store earlier, or If I need to water my plants once a week, and I'm late a day, it'll move a day forward so it'll continue to be every 7 days* 

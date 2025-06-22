@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::{BufReader, Write};
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 
+
 struct AppModel {
     counter: i8,
     main_window: gtk::Window,
@@ -19,7 +20,7 @@ struct Reminder {
 }
 
 fn read_reminders() -> Result<Vec<Reminder>, Box<dyn std::error::Error>> {
-    let file = File::open("StoredData.xml")?;
+    let file = File::open("Rewinders.xml")?;
     let parser = EventReader::new(BufReader::new(file));
     
     let mut reminders = Vec::new();
@@ -60,7 +61,7 @@ fn read_reminders() -> Result<Vec<Reminder>, Box<dyn std::error::Error>> {
 }
 
 fn write_reminders(reminders: &Vec<Reminder>) -> Result<(), Box<dyn std::error::Error>> {
-    let mut file = File::create("StoredData.xml")?;
+    let mut file = File::create("Rewinders.xml")?;
     
     writeln!(file, "<reminders>")?;
     
@@ -79,7 +80,7 @@ fn write_reminders(reminders: &Vec<Reminder>) -> Result<(), Box<dyn std::error::
 #[derive(Debug)]
 enum AppMsg {
     NewReminder,
-    FinalizeReminder(String, String),  // (name, iso_date)
+    FinalizeReminder(String, String), 
     Quit,
 }
 
@@ -137,7 +138,6 @@ impl SimpleComponent for AppModel {
         menu_dropdown.set_child(Some(&popover_box));
         menu_button.set_popover(Some(&menu_dropdown));
 
-        // Main content area
         let vbox = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(5)
@@ -150,10 +150,8 @@ impl SimpleComponent for AppModel {
             let reminder_frame = gtk::Frame::new(Some(&reminder.name));
             let reminder_label = gtk::Label::new(Some(&format!("Due: {}", reminder.time)));
 
-            // Parse ISO 8601 string back to DateTime
             let parsed_datetime = DateTime::parse_from_str(&reminder.time, "%Y-%m-%dT%H:%M:%S%z")
                 .or_else(|_| {
-                    // If no timezone, assume local
                     NaiveDateTime::parse_from_str(&reminder.time, "%Y-%m-%dT%H:%M:%S")
                         .map(|dt| Local.from_local_datetime(&dt).unwrap().into())
                 });
@@ -162,7 +160,6 @@ impl SimpleComponent for AppModel {
             vbox.append(&reminder_frame);
         }
 
-        // Event handlers
         exit_button.connect_clicked(clone!(
             #[strong] sender,
             move |_| {
@@ -191,12 +188,11 @@ impl SimpleComponent for AppModel {
             AppMsg::FinalizeReminder(text, iso_date) => {
                 let new_reminder = Reminder {
                     name: text,
-                    time: iso_date,  // Use the actual date from calendar
+                    time: iso_date, 
                 };
                 
                 self.reminders.push(new_reminder);
                 
-                // Write all reminders back to XML file
                 if let Err(e) = write_reminders(&self.reminders) {
                     println!("Error writing to XML: {}", e);
                 } else {
@@ -207,8 +203,9 @@ impl SimpleComponent for AppModel {
             AppMsg::NewReminder => {
                 let reminder_window = gtk::Window::builder()
                     .title("Add new Reminder")
-                    .default_width(400)
-                    .default_height(300)
+                    .default_width(600)
+                    .default_height(750)
+
                     .build();
                 
                 let reminderbox = gtk::Box::builder()
@@ -232,7 +229,6 @@ impl SimpleComponent for AppModel {
                     move |_| {
                         let text = reminder_name.text().to_string();
                         
-                        // Get date from calendar and convert to ISO string
                         let gtk_date = calendar.date();
                         let year = gtk_date.year();
                         let month = gtk_date.month() as u32;
@@ -262,6 +258,6 @@ impl SimpleComponent for AppModel {
 
 fn main() {
 
-    let app = RelmApp::new("relm4.test.simple_manual");
+    let app = RelmApp::new("Rewind");
     app.run::<AppModel>(0);
 }
