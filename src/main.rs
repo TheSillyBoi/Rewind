@@ -2,7 +2,7 @@ use gtk::glib::clone;
 use gtk::prelude::{BoxExt, ButtonExt, GtkWindowExt, PopoverExt, EntryExt, EditableExt, FrameExt, WidgetExt};
 use relm4::{gtk, ComponentParts, ComponentSender, RelmApp, SimpleComponent};
 use xml::reader::{EventReader, XmlEvent};
-use std::fs::{File, exists};
+use std::fs::File;
 use std::io::{BufReader, Write};
 use std::path::Path;
 use std::env;
@@ -65,7 +65,7 @@ fn get_file_path() -> String {
     format!("{}/Rewinders.xml", home)
 }
 
-fn DoesFileExist() {
+fn does_file_exist() {
     let file_path = get_file_path();
     if !Path::new(&file_path).exists() {
         println!("File doesn't exist at {}, will be created on first save", file_path);
@@ -232,7 +232,27 @@ impl SimpleComponent for AppModel {
                     .margin_start(45)
                     .margin_end(45)
                     .build();
-                
+
+                let hour_adjustment = gtk::Adjustment::new(
+                    12.0,  
+                    0.0,   
+                    23.0,  
+                    1.0,   
+                    1.0,   
+                    0.0    
+                );
+                let reminder_hour = gtk::SpinButton::new(Some(&hour_adjustment), 1.0, 0);
+
+                let minute_adjustment = gtk::Adjustment::new(
+                    0.0,   
+                    0.0,   
+                    59.0,  
+                    1.0,   
+                    5.0,   
+                    0.0    
+                );
+                let reminder_minute = gtk::SpinButton::new(Some(&minute_adjustment), 1.0, 0);
+
                 let calendar = gtk::Calendar::new();
                 let reminder_name = gtk::Entry::new();
                 reminder_name.set_placeholder_text(Some("What is the Reminder Called?"));
@@ -266,6 +286,8 @@ impl SimpleComponent for AppModel {
                 ));
                 
                 reminderbox.append(&reminder_name);
+                reminderbox.append(&reminder_hour);
+                reminderbox.append(&reminder_minute);
                 reminderbox.append(&calendar);
                 reminderbox.append(&finalize);
                 reminder_window.set_child(Some(&reminderbox));
@@ -294,7 +316,7 @@ impl SimpleComponent for AppModel {
 }
 
 fn main() {
-    DoesFileExist();
+    does_file_exist();
     let app = RelmApp::new("Rewind");
     app.run::<AppModel>(0);
 }
