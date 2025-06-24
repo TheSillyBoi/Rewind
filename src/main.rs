@@ -8,7 +8,8 @@ use std::path::Path;
 use std::{env, thread};
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use notify_rust::{Notification,Timeout,Hint};
-
+use std::collections::HashSet;
+use std::cell::RefCell;
 
 struct AppModel {
     main_window: gtk::Window, 
@@ -278,7 +279,9 @@ impl SimpleComponent for AppModel {
                     #[strong] sender,
                     #[strong] reminder_name,
                     #[strong] calendar,
-                    #[strong] reminder_window, 
+                    #[strong] reminder_window,
+                    #[strong] reminder_hour,
+                    #[strong] reminder_minute,
                     move |_| {
                         let text = reminder_name.text().to_string();
                         
@@ -294,7 +297,19 @@ impl SimpleComponent for AppModel {
                         let naive_datetime = NaiveDateTime::new(naive_date, naive_time);
                         let local_datetime: DateTime<Local> = Local.from_local_datetime(&naive_datetime).unwrap();
                         let iso_string = local_datetime.format("%Y-%m-%dT%H:%M:%S").to_string();
-                        println!("{}",iso_string);
+
+                        // Validate that the reminder time is in the future
+                        let current_local = Local::now();
+                        if local_datetime <= current_local {
+                            println!("Reminder time must be in the future!");
+                            let _ = Notification::new()
+                                .summary("Invalid Reminder")
+                                .body("Reminder time must be in the future!")
+                                .show();
+                            return;
+                        }
+
+                        println!("{}", iso_string);
                         sender.input(AppMsg::FinalizeReminder(text, iso_string));
                         reminder_window.close(); 
                     }
@@ -326,43 +341,130 @@ impl SimpleComponent for AppModel {
 }
 
 fn main() {
-    thread::spawn(move || {
-        loop {
+    does_file_exist();
+    
+    // Test notification immediately to see if notifications work at all
+   
+    let notified_reminders: std::rc::Rc<RefCell<HashSet<String>>> = std::rc::Rc::new(RefCell::new(HashSet::new()));
+    
+    // Track past reminders to avoid notifying for them
+    let past_reminders: std::rc::Rc<RefCell<HashSet<String>>> = std::rc::Rc::new(RefCell::new(HashSet::new()));
+    
+    // Try a second test notification after a short delay
+    gtk::glib::timeout_add_seconds_local(2, || {
+        println!("Sending secondary test notification");
+        match Notification::new()
+            .summary("Second Test")
+            .body("Testing notifications from timeout callback...")
+            .appname("Rewind")
+            .timeout(Timeout::Milliseconds(5000))
+            .hint(Hint::Urgency(notify_rust::Urgency::Critical))
+            .show() {
+            Ok(_) => println!("Secondary test notification sent successfully"),
+            Err(e) => println!("Secondary test notification failed: {}", e),
+        }
+        gtk::glib::ControlFlow::Break  // Run only once
+    });
+    
+    // Mark all existing past reminders on startup
+    if let Ok(reminders) = read_reminders() {
+        let current_naive = Local::now().naive_local();
+        let mut past = past_reminders.borrow_mut();
+        
+        for reminder in reminders {
+            if let Ok(reminder_time) = NaiveDateTime::parse_from_str(&reminder.time, "%Y-%m-%dT%H:%M:%S") {
+                if reminder_time < current_naive {
+                    // This is a past reminder, mark it
+                    let reminder_id = format!("{}_{}", reminder.name, reminder.time);
+                    past.insert(reminder_id);
+                    println!("Marked past reminder: {}", reminder.name);
+                }
+            }
+        }
+    }
+    
+    gtk::glib::timeout_add_seconds_local(5, clone!(
+        #[strong] notified_reminders,
+        #[strong] past_reminders,
+        move || {
+            println!("Checking reminders...");
+            
             if let Ok(reminders) = read_reminders() {
                 let current_local = Local::now();
                 let current_naive = current_local.naive_local();
                 
+                println!("Current time: {}", current_naive);
+                println!("Found {} reminders", reminders.len());
+                
                 for reminder in reminders {
                     if let Ok(reminder_time) = NaiveDateTime::parse_from_str(&reminder.time, "%Y-%m-%dT%H:%M:%S") {
                         let time_diff = reminder_time.signed_duration_since(current_naive);
+                        let reminder_id = format!("{}_{}", reminder.name, reminder.time);
                         
-                        if time_diff.num_seconds() >= 0 && time_diff.num_seconds() <= 60 {
-                            match Notification::new()
-                                .summary(&format!("Reminder: {}", reminder.name))
-                                .body(&format!("Your reminder '{}' is due now!", reminder.name))
-                                .appname("Rewind")
-                                .icon("dialog-information")
-                                
-                                .show() {
-                                Ok(_) => println!("Notification sent for: {}", reminder.name),
-                                Err(e) => println!("Failed to send notification: {}", e),
-                            }
+                        println!("Reminder '{}' time: {}, diff: {} seconds", 
+                                 reminder.name, reminder_time, time_diff.num_seconds());
+                        
+                        // Check if this is a past reminder we've already seen
+                        if past_reminders.borrow().contains(&reminder_id) {
+                            println!("Skipping past reminder: {}", reminder.name);
+                            continue;
                         }
-                    
-                
+                        
+                        // Only notify for upcoming reminders or those due in the last 60 seconds
+                        if time_diff.num_seconds() >= -60 && time_diff.num_seconds() <= 300 {
+                            // Check if we've already notified for this reminder
+                            let mut notified = notified_reminders.borrow_mut();
+                            if !notified.contains(&reminder_id) {
+                                println!("Sending notification for: {}", reminder.name);
+                                
+                                // Try with more specific notification settings
+                                match Notification::new()
+                                    .summary(&format!("Reminder: {}", reminder.name))
+                                    .body(&format!("Your reminder '{}' is due now!", reminder.name))
+                                    .icon("appointment-soon")
+                                    .timeout(Timeout::Milliseconds(10000))
+                                    .hint(Hint::Urgency(notify_rust::Urgency::Critical))
+                                    .hint(Hint::Category("reminder".to_string()))
+                                    .show() {
+                                    Ok(_) => {
+                                        println!("Notification sent for: {}", reminder.name);
+                                        notified.insert(reminder_id.clone());
+                                        
+                                        // Also try native command as fallback
+                                        let cmd = format!(
+                                            "Rewind -u critical \"Reminder: {}\" \"Your reminder is due now!\"",
+                                            reminder.name
+                                        );
+                                        match std::process::Command::new("sh")
+                                            .arg("-c")
+                                            .arg(&cmd)
+                                            .status() {
+                                            Ok(_) => println!("Sent fallback notification via command"),
+                                            Err(e) => println!("Failed to send fallback: {}", e),
+                                        }
+                                    },
+                                    Err(e) => println!("Failed to send notification: {}", e),
+                                }
+                            } else {
+                                println!("Already notified for: {}", reminder.name);
+                            }
+                        } else if time_diff.num_seconds() < 0 {
+                            // This reminder is in the past, mark it
+                            past_reminders.borrow_mut().insert(reminder_id);
+                            println!("Marked past reminder: {}", reminder.name);
+                        }
+                    } else {
+                        println!("Failed to parse reminder time for: {}", reminder.name);
+                    }
+                }
+            } else {
+                println!("Failed to read reminders");
             }
             
-            thread::sleep(std::time::Duration::from_secs(1));
-            
-            
+            gtk::glib::ControlFlow::Continue
         }
-    }
-       
-        
- }
-});
+    ));
 
-    does_file_exist();
     let app = RelmApp::new("Rewind");
     app.run::<AppModel>(0);
 }
