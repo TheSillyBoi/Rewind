@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{BufReader, Write};
 use std::path::Path;
 use std::{env, thread};
-use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, FixedOffset};
+use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use notify_rust::{Notification,Timeout,Hint};
 
 
@@ -259,7 +259,7 @@ impl SimpleComponent for AppModel {
                 let calendar = gtk::Calendar::new();
                 let reminder_name = gtk::Entry::new();
                 reminder_name.set_placeholder_text(Some("What is the Reminder Called?"));
-                reminder_name.set_max_length(20);
+                reminder_name.set_max_length(100);
                 
                 let finalize = gtk::Button::new();
                 finalize.set_icon_name("checkmark-symbolic");
@@ -327,25 +327,35 @@ impl SimpleComponent for AppModel {
 
 fn main() {
     thread::spawn(|| {
+        loop {
+            if let Ok(reminders) = read_reminders() {
+                let current_local = Local::now();
+                let current_naive = current_local.naive_local();
+                
+                for reminder in reminders {
+                    if let Ok(reminder_time) = NaiveDateTime::parse_from_str(&reminder.time, "%Y-%m-%dT%H:%M:%S") {
+                        let time_diff = reminder_time.signed_duration_since(current_naive);
+                        
+                        if time_diff.num_seconds() >= 0 && time_diff.num_seconds() <= 60 {
+                            match Notification::new()
+                                .summary(&format!("Reminder: {}", reminder.name))
+                                .body(&format!("Your reminder '{}' is due now!", reminder.name))
+                                .appname("Rewind")
+                                //.icon("dialog-information")
+                                .show() {
+                                Ok(_) => println!("Notification sent for: {}", reminder.name),
+                                Err(e) => println!("Failed to send notification: {}", e),
+                            }
+                        }
+                    }
+                }
+            }
+            
+            thread::sleep(std::time::Duration::from_secs(30));
+        }
+       
         
-    let naive = NaiveDateTime::parse_from_str("2025-06-23 12:34:56", "%Y-%m-%d %H:%M:%S").expect("skill issue");
-    let unix_time = naive.timestamp();
-    loop{
-        let current_local = Local::now();
-        let naive_local: NaiveDateTime = current_local.naive_local();
-        let current_unix_time = naive_local.timestamp();
-       if 0 == 2{
-        Notification::new()
-        .summary("Category:Task")
-        .body("One of your reminders is Happening!!!!!")
-        .appname("Rewind:")
-        .hint(Hint::Category("email".to_owned()))
-        .hint(Hint::Resident(true))
-        .timeout(Timeout::Never)
-        .show().unwrap();
-       }
-    }
-    });
+});
     does_file_exist();
     let app = RelmApp::new("Rewind");
     app.run::<AppModel>(0);
