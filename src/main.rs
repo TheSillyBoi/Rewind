@@ -326,7 +326,7 @@ impl SimpleComponent for AppModel {
 }
 
 fn main() {
-    thread::spawn(|| {
+    thread::spawn(move || {
         loop {
             if let Ok(reminders) = read_reminders() {
                 let current_local = Local::now();
@@ -341,21 +341,27 @@ fn main() {
                                 .summary(&format!("Reminder: {}", reminder.name))
                                 .body(&format!("Your reminder '{}' is due now!", reminder.name))
                                 .appname("Rewind")
-                                //.icon("dialog-information")
+                                .icon("dialog-information")
+                                
                                 .show() {
                                 Ok(_) => println!("Notification sent for: {}", reminder.name),
                                 Err(e) => println!("Failed to send notification: {}", e),
                             }
                         }
-                    }
-                }
+                    
+                
             }
             
-            thread::sleep(std::time::Duration::from_secs(30));
+            thread::sleep(std::time::Duration::from_secs(1));
+            
+            
         }
+    }
        
         
+ }
 });
+
     does_file_exist();
     let app = RelmApp::new("Rewind");
     app.run::<AppModel>(0);
