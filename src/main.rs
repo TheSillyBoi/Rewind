@@ -327,14 +327,24 @@ impl SimpleComponent for AppModel {
 
 fn main() {
     thread::spawn(|| {
-       Notification::new()
+        
+    let naive = NaiveDateTime::parse_from_str("2025-06-23 12:34:56", "%Y-%m-%d %H:%M:%S").expect("skill issue");
+    let unix_time = naive.timestamp();
+    loop{
+        let current_local = Local::now();
+        let naive_local: NaiveDateTime = current_local.naive_local();
+        let current_unix_time = naive_local.timestamp();
+       if 0 == 2{
+        Notification::new()
         .summary("Category:Task")
-        .body("This has nothing to do with emails.\nIt should not go away until you acknowledge it.")
-        .appname("Rewind")
+        .body("One of your reminders is Happening!!!!!")
+        .appname("Rewind:")
         .hint(Hint::Category("email".to_owned()))
-        .hint(Hint::Resident(true)) // this is not supported by all implementations
-        .timeout(Timeout::Never) // this however is
+        .hint(Hint::Resident(true))
+        .timeout(Timeout::Never)
         .show().unwrap();
+       }
+    }
     });
     does_file_exist();
     let app = RelmApp::new("Rewind");

@@ -4,6 +4,8 @@ A simple reminder app in order to learn GUIs, Storing Data, and the concepts the
 # THIS IS A WORK IN PROGRESS, and may never be finished.
 This is only (Mainly) built for the GNOME desktop environment on Linux , so issues on other DEs/OSes will likely happen, and if possible, using Linux(which GTK is built for) will lead to an overall better experience.
 
+I'm unsure how to add finishing/removing Reminders from the XML, so currently, if you want to remove them, you have to remove them from ~/Rewinders.xml
+
 
 ## Installation
 ##### Linux:
