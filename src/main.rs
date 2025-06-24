@@ -5,8 +5,10 @@ use xml::reader::{EventReader, XmlEvent};
 use std::fs::File;
 use std::io::{BufReader, Write};
 use std::path::Path;
-use std::env;
-use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
+use std::{env, thread};
+use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, FixedOffset};
+use notify_rust::{Notification,Timeout,Hint};
+
 
 struct AppModel {
     main_window: gtk::Window, 
@@ -253,6 +255,7 @@ impl SimpleComponent for AppModel {
                 );
                 let reminder_minute = gtk::SpinButton::new(Some(&minute_adjustment), 1.0, 0);
 
+                
                 let calendar = gtk::Calendar::new();
                 let reminder_name = gtk::Entry::new();
                 reminder_name.set_placeholder_text(Some("What is the Reminder Called?"));
@@ -260,6 +263,16 @@ impl SimpleComponent for AppModel {
                 
                 let finalize = gtk::Button::new();
                 finalize.set_icon_name("checkmark-symbolic");
+
+                reminderbox.append(&reminder_name);
+                reminderbox.append(&reminder_hour);
+                reminderbox.append(&reminder_minute);
+                reminderbox.append(&calendar);
+                reminderbox.append(&finalize);
+                reminder_window.set_child(Some(&reminderbox));
+                reminder_window.set_transient_for(Some(&self.main_window));
+                reminder_window.set_modal(true);
+                reminder_window.present();
                 
                 finalize.connect_clicked(clone!(
                     #[strong] sender,
@@ -273,27 +286,21 @@ impl SimpleComponent for AppModel {
                         let year = gtk_date.year();
                         let month = gtk_date.month() as u32;
                         let day = gtk_date.day_of_month() as u32;
-                        
+                        let minute = reminder_minute.value_as_int() as u32;
+                        let hour = reminder_hour.value_as_int() as u32;
+
                         let naive_date = NaiveDate::from_ymd_opt(year, month, day).unwrap();
-                        let naive_time = NaiveTime::from_hms_opt(12, 0, 0).unwrap();
+                        let naive_time = NaiveTime::from_hms_opt(hour, minute, 0).unwrap();
                         let naive_datetime = NaiveDateTime::new(naive_date, naive_time);
                         let local_datetime: DateTime<Local> = Local.from_local_datetime(&naive_datetime).unwrap();
                         let iso_string = local_datetime.format("%Y-%m-%dT%H:%M:%S").to_string();
-                        
+                        println!("{}",iso_string);
                         sender.input(AppMsg::FinalizeReminder(text, iso_string));
                         reminder_window.close(); 
                     }
                 ));
                 
-                reminderbox.append(&reminder_name);
-                reminderbox.append(&reminder_hour);
-                reminderbox.append(&reminder_minute);
-                reminderbox.append(&calendar);
-                reminderbox.append(&finalize);
-                reminder_window.set_child(Some(&reminderbox));
-                reminder_window.set_transient_for(Some(&self.main_window));
-                reminder_window.set_modal(true);
-                reminder_window.present();
+                
             }
         }
     }
@@ -308,7 +315,10 @@ impl SimpleComponent for AppModel {
         
         for reminder in &self.reminders {
             let reminder_frame = gtk::Frame::new(Some(&reminder.name));
-            let reminder_label = gtk::Label::new(Some(&format!("Due: {}", reminder.time)));
+            let naive_dt = NaiveDateTime::parse_from_str(&reminder.time, "%Y-%m-%dT%H:%M:%S")
+                .expect("Failed to parse datetime");     
+            let readable = naive_dt.format("%A, %B %e, %Y at %H:%M:%S").to_string();
+            let reminder_label = gtk::Label::new(Some(&format!("Due: {}", readable)));
             reminder_frame.set_child(Some(&reminder_label));
             widgets.reminder_container.append(&reminder_frame);
         }
@@ -316,6 +326,16 @@ impl SimpleComponent for AppModel {
 }
 
 fn main() {
+    thread::spawn(|| {
+       Notification::new()
+        .summary("Category:Task")
+        .body("This has nothing to do with emails.\nIt should not go away until you acknowledge it.")
+        .appname("Rewind")
+        .hint(Hint::Category("email".to_owned()))
+        .hint(Hint::Resident(true)) // this is not supported by all implementations
+        .timeout(Timeout::Never) // this however is
+        .show().unwrap();
+    });
     does_file_exist();
     let app = RelmApp::new("Rewind");
     app.run::<AppModel>(0);
