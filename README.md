@@ -11,7 +11,7 @@ I'm unsure how to add finishing/removing Reminders from the XML, so currently, i
 ##### Linux:
    Install Rustup/Rust from your package manager or from the website, along with GTK4, GTK4-devel, and gcc, these may be already installed if you've done development on your system. installation will look similar to this:(ex: `sudo dnf install rustup gtk-devel gcc`, or `sudo pacman -S gtk4-devel gcc`) 
 
-   Run the following Terminal in your shell ``git clone https://github.com/thesillyboi/Rewind && cd Rewind && cargo build --release && mv target/release/Rewind ~/.cargo/bin/ | sh`` You can also put the binary in another location in your PATH instead of .Cargo/bin, but that's where I'd reccomend storing it.
+   Run the following command in your shell ``git clone https://github.com/thesillyboi/Rewind && cd Rewind && cargo build --release && mv target/release/Rewind ~/.cargo/bin/ | sh`` You can also put the binary in another location in your PATH instead of .Cargo/bin, but that's where I'd reccomend storing it.
    Finally, run `Rewind` in your shell to use the program.
 
 ##### Windows/Mac:
