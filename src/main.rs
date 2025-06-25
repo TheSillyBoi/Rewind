@@ -282,7 +282,10 @@ impl SimpleComponent for AppModel {
                 let reminder_name = gtk::Entry::new();
                 reminder_name.set_placeholder_text(Some("What is the Reminder Called?"));
                 reminder_name.set_max_length(100);
+                reminder_name.add_css_class("remindername");
                 
+                // Debug: Check if the CSS class was added
+
                 let finalize = gtk::Button::new();
                 finalize.set_icon_name("checkmark-symbolic");
 
@@ -366,6 +369,10 @@ impl SimpleComponent for AppModel {
         
         for reminder in &self.reminders {
             let reminder_frame = gtk::Frame::new(Some(&reminder.name));
+            
+            // Center the frame label
+            reminder_frame.set_label_align(0.5);
+            
             let naive_dt = NaiveDateTime::parse_from_str(&reminder.time, "%Y-%m-%dT%H:%M:%S")
                 .expect("Failed to parse datetime");     
             let readable = naive_dt.format("%A, %B %e, %Y at %H:%M:%S").to_string();
@@ -508,3 +515,5 @@ fn main() {
     let app = RelmApp::new("Rewind");
     app.run::<AppModel>(0);
 }
+
+

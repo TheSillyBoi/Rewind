@@ -1,19 +1,20 @@
-/* CSS styles for the Rewind application */
-
-/* Example styles - you can modify these as needed */
-window {
-
-}
-
-button {
-
+label {
+    font-size: 12px;
 }
 
 frame {
+    text-align: center;
     border: 1px solid #000000;
-    margin: 2px;
+    margin-left: 30px;
+    margin-bottom: 10px;
+    margin-right: 30px;
 }
 
 entry {
     border: 1px solid #ccc;
 }
+
+calendar {
+    border-radius: 0.5rem;
+}
+
