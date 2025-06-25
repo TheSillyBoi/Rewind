@@ -1,15 +1,19 @@
 use gtk::glib::clone;
-use gtk::prelude::{BoxExt, ButtonExt, GtkWindowExt, PopoverExt, EntryExt, EditableExt, FrameExt, WidgetExt};
+use gtk::{ MessageType, DialogFlags, ButtonsType, ResponseType};
+use gtk::prelude::{BoxExt, ButtonExt, GtkWindowExt, PopoverExt, EntryExt, EditableExt, FrameExt, WidgetExt, DialogExt};
 use relm4::{gtk, ComponentParts, ComponentSender, RelmApp, SimpleComponent};
 use xml::reader::{EventReader, XmlEvent};
 use std::fs::File;
 use std::io::{BufReader, Write};
 use std::path::Path;
-use std::{env, thread};
+use std::env;
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use notify_rust::{Notification,Timeout,Hint};
 use std::collections::HashSet;
 use std::cell::RefCell;
+use gtk::CssProvider;
+use gtk::StyleContext;
+use gtk::gdk::Display;
 
 struct AppModel {
     main_window: gtk::Window, 
@@ -21,7 +25,6 @@ struct Reminder {
     name: String,
     time: String,
 }
-
 fn read_reminders() -> Result<Vec<Reminder>, Box<dyn std::error::Error>> {
     let file = File::open(get_file_path())?;
     let parser = EventReader::new(BufReader::new(file));
@@ -92,6 +95,24 @@ fn write_reminders(reminders: &Vec<Reminder>) -> Result<(), Box<dyn std::error::
     writeln!(file, "</reminders>")?;
     
     Ok(())
+}
+
+fn apply_css() {
+    let provider = CssProvider::new();
+
+    // Load CSS from main.css file - load_from_path returns () in GTK4
+    provider.load_from_path("main.css");
+    println!("CSS loaded from main.css");
+
+    // Get the default display
+    let display = Display::default().expect("Could not get default display");
+
+    // Add provider with priority using the non-deprecated function
+    gtk::style_context_add_provider_for_display(
+        &display,
+        &provider,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
 }
 
 #[derive(Debug)]
@@ -302,10 +323,25 @@ impl SimpleComponent for AppModel {
                         let current_local = Local::now();
                         if local_datetime <= current_local {
                             println!("Reminder time must be in the future!");
-                            let _ = Notification::new()
-                                .summary("Invalid Reminder")
-                                .body("Reminder time must be in the future!")
-                                .show();
+                            let reminder_ood = gtk::MessageDialog::new(
+                                Some(&reminder_window), 
+                                DialogFlags::MODAL, 
+                                MessageType::Error,
+                                ButtonsType::Ok, 
+                                "The Reminder must be in the Future!"
+                            );
+                            reminder_ood.connect_response(move |dialog, response| {
+                                match response {
+                                    ResponseType::Ok => {
+                                        dialog.close();
+                                    }, 
+                                    _ => {
+                                        println!("Box closed");
+                                        dialog.close();
+                                    }
+                                }
+                            });
+                            reminder_ood.present();
                             return;
                         }
 
@@ -341,9 +377,13 @@ impl SimpleComponent for AppModel {
 }
 
 fn main() {
-    does_file_exist();
+    // Initialize GTK first
+    gtk::init().expect("Failed to initialize GTK");
     
-    // Test notification immediately to see if notifications work at all
+    // Apply CSS styling
+    apply_css();
+    
+    does_file_exist();
    
     let notified_reminders: std::rc::Rc<RefCell<HashSet<String>>> = std::rc::Rc::new(RefCell::new(HashSet::new()));
     
@@ -383,7 +423,7 @@ fn main() {
         }
     }
     
-    gtk::glib::timeout_add_seconds_local(5, clone!(
+    gtk::glib::timeout_add_seconds_local(15, clone!(
         #[strong] notified_reminders,
         #[strong] past_reminders,
         move || {
@@ -432,7 +472,7 @@ fn main() {
                                         
                                         // Also try native command as fallback
                                         let cmd = format!(
-                                            "Rewind -u critical \"Reminder: {}\" \"Your reminder is due now!\"",
+                                            "notify-send -u critical \"Reminder: {}\" \"Your reminder is due now!\"",
                                             reminder.name
                                         );
                                         match std::process::Command::new("sh")

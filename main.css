@@ -1,0 +1,19 @@
+/* CSS styles for the Rewind application */
+
+/* Example styles - you can modify these as needed */
+window {
+
+}
+
+button {
+
+}
+
+frame {
+    border: 1px solid #000000;
+    margin: 2px;
+}
+
+entry {
+    border: 1px solid #ccc;
+}
