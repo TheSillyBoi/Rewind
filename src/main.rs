@@ -121,6 +121,7 @@ enum AppMsg {
     FinalizeReminder(String, String),
     LoadInitialData, 
     Quit,
+    About,
 }
 
 struct AppWidgets {
@@ -174,7 +175,9 @@ impl SimpleComponent for AppModel {
             .build();
         
         let exit_button = gtk::Button::with_label("Exit");
+        let about_button = gtk::Button::with_label("About");
         popover_box.append(&exit_button);
+        popover_box.append(&about_button);
         menu_dropdown.set_child(Some(&popover_box));
         menu_button.set_popover(Some(&menu_dropdown));
 
@@ -195,7 +198,13 @@ impl SimpleComponent for AppModel {
         
         scrolled_window.set_child(Some(&reminder_container));
         window.set_child(Some(&scrolled_window));
+        about_button.connect_clicked(clone!(
+            #[strong] sender,
+            move |_| {
+                sender.input(AppMsg::About);
+            }
 
+        ));
         exit_button.connect_clicked(clone!(
             #[strong] sender,
             move |_| {
@@ -242,7 +251,29 @@ impl SimpleComponent for AppModel {
                     println!("Successfully saved {} reminders to XML", self.reminders.len());
                 }
             }
-            
+            AppMsg::About => {
+                let about_window = gtk::AboutDialog::new();
+                about_window.set_program_name(Some("Rewind"));
+                about_window.set_comments(Some("A simple reminder app in order to learn GUIs, Storing Data, and the concepts thereof"));
+                about_window.set_authors(&["Adrian Tennies"]);
+                about_window.set_website(Some("https://github.com/thesillyboi/Rewind"));
+                about_window.set_copyright(Some("©2025 Adrian Tennies"));
+                about_window.set_license(Some("LGPL-2.1 License"));
+                
+                match gtk::gdk::Texture::from_filename("Logo.png") {
+                    Ok(texture) => {
+                        about_window.set_logo(Some(&texture));
+                    },
+                    Err(e) => {
+                        println!("Could not load logo.png: {}", e);
+                        // Optionally set a default icon name instead
+                        about_window.set_logo_icon_name(Some("application-x-executable"));
+                    }
+                }
+                
+                about_window.set_transient_for(Some(&self.main_window));
+                about_window.present();
+            }
             AppMsg::NewReminder => {
                 let reminder_window = gtk::Dialog::builder()
                     .title("Add new Reminder")
