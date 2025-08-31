@@ -2,18 +2,16 @@ use gtk::glib::clone;
 use gtk::{ MessageType, DialogFlags, ButtonsType, ResponseType};
 use gtk::prelude::{BoxExt, ButtonExt, GtkWindowExt, PopoverExt, EntryExt, EditableExt, FrameExt, WidgetExt, DialogExt};
 use relm4::{gtk, ComponentParts, ComponentSender, RelmApp, SimpleComponent};
-use xml::reader::{EventReader, XmlEvent};
-use std::fs::File;
-use std::io::{BufReader, Write};
-use std::path::Path;
-use std::env;
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use notify_rust::{Notification,Timeout,Hint};
 use std::collections::HashSet;
 use std::cell::RefCell;
 use gtk::CssProvider;
-use gtk::StyleContext;
 use gtk::gdk::Display;
+
+mod file_actions;
+
+
 
 struct AppModel {
     main_window: gtk::Window, 
@@ -24,77 +22,6 @@ struct AppModel {
 struct Reminder {
     name: String,
     time: String,
-}
-fn read_reminders() -> Result<Vec<Reminder>, Box<dyn std::error::Error>> {
-    let file = File::open(get_file_path())?;
-    let parser = EventReader::new(BufReader::new(file));
-    
-    let mut reminders = Vec::new();
-    let mut current_reminder = Reminder { name: String::new(), time: String::new() };
-    let mut current_element = String::new();
-    let mut inside_reminder = false;
-    
-    for event in parser {
-        match event? {
-            XmlEvent::StartElement { name, .. } => {
-                let element_name = name.local_name;
-                if element_name == "reminder" {
-                    inside_reminder = true;
-                    current_reminder = Reminder { name: String::new(), time: String::new() };
-                }
-                current_element = element_name;
-            }
-            XmlEvent::Characters(data) => {
-                if inside_reminder && !data.trim().is_empty() {
-                    match current_element.as_str() {
-                        "name" => current_reminder.name = data.trim().to_string(),
-                        "time" => current_reminder.time = data.trim().to_string(),
-                        _ => {}
-                    }
-                }
-            }
-            XmlEvent::EndElement { name } => {
-                if name.local_name == "reminder" {
-                    reminders.push(current_reminder.clone());
-                    inside_reminder = false;
-                }
-            }
-            _ => {}
-        }
-    }
-    
-    Ok(reminders)
-}
-
-fn get_file_path() -> String {
-    let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    format!("{}/Rewinders.xml", home)
-}
-
-fn does_file_exist() {
-    let file_path = get_file_path();
-    if !Path::new(&file_path).exists() {
-        println!("File doesn't exist at {}, will be created on first save", file_path);
-    } else {
-        println!("Found existing file at {}", file_path);
-    }
-}
-
-fn write_reminders(reminders: &Vec<Reminder>) -> Result<(), Box<dyn std::error::Error>> {
-    let mut file = File::create(get_file_path())?;
-    
-    writeln!(file, "<reminders>")?;
-    
-    for reminder in reminders {
-        writeln!(file, "  <reminder>")?;
-        writeln!(file, "    <name>{}</name>", reminder.name)?;
-        writeln!(file, "    <time>{}</time>", reminder.time)?;
-        writeln!(file, "  </reminder>")?;
-    }
-    
-    writeln!(file, "</reminders>")?;
-    
-    Ok(())
 }
 
 fn apply_css() {
@@ -120,13 +47,11 @@ enum AppMsg {
     NewReminder,
     FinalizeReminder(String, String),
     LoadInitialData, 
-    Quit,
     About,
+    DeleteReminder(usize)
 }
 
 struct AppWidgets {
-    menu_button: gtk::MenuButton,
-    new_tracked: gtk::Button,
     reminder_container: gtk::Box,
 }
 
@@ -150,7 +75,7 @@ impl SimpleComponent for AppModel {
         window: Self::Root,
         sender: ComponentSender<Self>,
     ) -> relm4::ComponentParts<Self> {
-        let existing_reminders = read_reminders().unwrap_or_else(|_| Vec::new());
+        let existing_reminders = file_actions::read_reminders().unwrap_or_else(|_| Vec::new());
 
         let model = AppModel { 
             main_window: window.clone(),
@@ -162,10 +87,11 @@ impl SimpleComponent for AppModel {
         let new_tracked = gtk::Button::new();
         
         header.pack_end(&menu_button);
+        header.set_widget_name("TopBarName");
         header.pack_end(&new_tracked);
         window.set_titlebar(Some(&header));
         
-        menu_button.set_icon_name("open-menu-symbolic");
+        menu_button.set_icon_name("open-menu");
         new_tracked.set_icon_name("list-add");
 
         let menu_dropdown = gtk::Popover::new();
@@ -174,9 +100,7 @@ impl SimpleComponent for AppModel {
             .spacing(5)
             .build();
         
-        let exit_button = gtk::Button::with_label("Exit");
         let about_button = gtk::Button::with_label("About");
-        popover_box.append(&exit_button);
         popover_box.append(&about_button);
         menu_dropdown.set_child(Some(&popover_box));
         menu_button.set_popover(Some(&menu_dropdown));
@@ -205,13 +129,8 @@ impl SimpleComponent for AppModel {
             }
 
         ));
-        exit_button.connect_clicked(clone!(
-            #[strong] sender,
-            move |_| {
-                sender.input(AppMsg::Quit);
-            }
-        ));
-
+        
+        
         new_tracked.connect_clicked(clone!(
             #[strong] sender,
             move |_| {
@@ -220,8 +139,7 @@ impl SimpleComponent for AppModel {
         ));
 
         let widgets = AppWidgets { 
-            menu_button, 
-            new_tracked,
+
             reminder_container: reminder_container.clone(),
         };
 
@@ -235,9 +153,6 @@ impl SimpleComponent for AppModel {
             AppMsg::LoadInitialData => {
             }
 
-            AppMsg::Quit => {
-                std::process::exit(0);
-            }
 
             AppMsg::FinalizeReminder(text, iso_date) => {
                 self.reminders.push(Reminder {
@@ -245,7 +160,7 @@ impl SimpleComponent for AppModel {
                     time: iso_date,
                 });
                 
-                if let Err(e) = write_reminders(&self.reminders) {
+                if let Err(e) = file_actions::write_reminders(&self.reminders) {
                     println!("Error writing to XML: {}", e);
                 } else {
                     println!("Successfully saved {} reminders to XML", self.reminders.len());
@@ -255,10 +170,11 @@ impl SimpleComponent for AppModel {
                 let about_window = gtk::AboutDialog::new();
                 about_window.set_program_name(Some("Rewind"));
                 about_window.set_comments(Some("A simple reminder app in order to learn GUIs, Storing Data, and the concepts thereof"));
-                about_window.set_authors(&["Adrian Tennies"]);
+                about_window.set_authors(&["Adrian Tennies https://adriantennies.vercel.app"]);
                 about_window.set_website(Some("https://github.com/thesillyboi/Rewind"));
+                about_window.set_comments(Some("Thanks for using this, your support of the project helps a lot!"));
                 about_window.set_copyright(Some("©2025 Adrian Tennies"));
-                about_window.set_license(Some("LGPL-2.1 License"));
+                about_window.set_license(Some("LGPL-2.1 License https://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html" ));
                 
                 match gtk::gdk::Texture::from_filename("Logo.png") {
                     Ok(texture) => {
@@ -266,15 +182,27 @@ impl SimpleComponent for AppModel {
                     },
                     Err(e) => {
                         println!("Could not load logo.png: {}", e);
-                        // Optionally set a default icon name instead
-                        about_window.set_logo_icon_name(Some("application-x-executable"));
                     }
                 }
                 
                 about_window.set_transient_for(Some(&self.main_window));
                 about_window.present();
             }
+
+            AppMsg::DeleteReminder(index) => {
+                if index < self.reminders.len() {
+                    self.reminders.remove(index);
+                    if let Err(e) = file_actions::write_reminders(&self.reminders) {
+                        println!("Error writing to XML: {}", e);
+                    } else {
+                        println!("Successfully removed reminder and saved to XML");
+                    }
+                } else {
+                    println!("Invalid reminder index: {}", index);
+                }
+            }
             AppMsg::NewReminder => {
+
                 let reminder_window = gtk::Dialog::builder()
                     .title("Add new Reminder")
                     .default_width(600)
@@ -311,14 +239,11 @@ impl SimpleComponent for AppModel {
                 
                 let calendar = gtk::Calendar::new();
                 let reminder_name = gtk::Entry::new();
-                reminder_name.set_placeholder_text(Some("What is the Reminder Called?"));
+                reminder_name.set_placeholder_text(Some("What is your reminder called?"));
                 reminder_name.set_max_length(100);
                 reminder_name.add_css_class("remindername");
-                
-                // Debug: Check if the CSS class was added
-
                 let finalize = gtk::Button::new();
-                finalize.set_icon_name("checkmark-symbolic");
+                finalize.set_icon_name("checkmark");
 
                 reminderbox.append(&reminder_name);
                 reminderbox.append(&reminder_hour);
@@ -390,7 +315,7 @@ impl SimpleComponent for AppModel {
         }
     }
 
-    fn update_view(&self, widgets: &mut Self::Widgets, _sender: ComponentSender<Self>) {
+    fn update_view(&self, widgets: &mut Self::Widgets, sender: ComponentSender<Self>) {
         let mut child = widgets.reminder_container.first_child();
         while let Some(widget) = child {
             let next = widget.next_sibling();
@@ -398,9 +323,20 @@ impl SimpleComponent for AppModel {
             child = next;
         }
         
-        for reminder in &self.reminders {
+        for (index, reminder) in self.reminders.iter().enumerate() {
             let reminder_frame = gtk::Frame::new(Some(&reminder.name));
-            
+            let delete_reminder = gtk::Button::new();
+            delete_reminder.set_label("Delete Reminder");
+            let reminder_index = index;
+            delete_reminder.connect_clicked(clone!(
+            #[strong] sender,
+            move |_| {
+                sender.input(AppMsg::DeleteReminder(reminder_index));
+            }
+        ));
+
+            delete_reminder.set_widget_name("delete");
+            reminder_frame.set_widget_name("reminder_frame");
             // Center the frame label
             reminder_frame.set_label_align(0.5);
             
@@ -408,7 +344,14 @@ impl SimpleComponent for AppModel {
                 .expect("Failed to parse datetime");     
             let readable = naive_dt.format("%A, %B %e, %Y at %H:%M:%S").to_string();
             let reminder_label = gtk::Label::new(Some(&format!("Due: {}", readable)));
-            reminder_frame.set_child(Some(&reminder_label));
+            
+            // Create a container for both widgets
+            let container = gtk::Box::new(gtk::Orientation::Vertical, 10);
+            container.append(&reminder_label);
+            container.append(&delete_reminder);
+            
+            // Set the container as the frame's child
+            reminder_frame.set_child(Some(&container));
             widgets.reminder_container.append(&reminder_frame);
         }
     }
@@ -421,7 +364,7 @@ fn main() {
     // Apply CSS styling
     apply_css();
     
-    does_file_exist();
+    file_actions::does_file_exist();
    
     let notified_reminders: std::rc::Rc<RefCell<HashSet<String>>> = std::rc::Rc::new(RefCell::new(HashSet::new()));
     
@@ -445,10 +388,9 @@ fn main() {
     });
     
     // Mark all existing past reminders on startup
-    if let Ok(reminders) = read_reminders() {
+    if let Ok(reminders) = file_actions::read_reminders() {
         let current_naive = Local::now().naive_local();
         let mut past = past_reminders.borrow_mut();
-        
         for reminder in reminders {
             if let Ok(reminder_time) = NaiveDateTime::parse_from_str(&reminder.time, "%Y-%m-%dT%H:%M:%S") {
                 if reminder_time < current_naive {
@@ -461,30 +403,32 @@ fn main() {
         }
     }
     
+    
+    
     gtk::glib::timeout_add_seconds_local(15, clone!(
         #[strong] notified_reminders,
         #[strong] past_reminders,
         move || {
-            println!("Checking reminders...");
+            // println!("Checking reminders...");
             
-            if let Ok(reminders) = read_reminders() {
+            if let Ok(reminders) = file_actions::read_reminders() {
                 let current_local = Local::now();
                 let current_naive = current_local.naive_local();
                 
-                println!("Current time: {}", current_naive);
-                println!("Found {} reminders", reminders.len());
+                // println!("Current time: {}", current_naive);
+                // println!("Found {} reminders", reminders.len());
                 
                 for reminder in reminders {
                     if let Ok(reminder_time) = NaiveDateTime::parse_from_str(&reminder.time, "%Y-%m-%dT%H:%M:%S") {
                         let time_diff = reminder_time.signed_duration_since(current_naive);
                         let reminder_id = format!("{}_{}", reminder.name, reminder.time);
                         
-                        println!("Reminder '{}' time: {}, diff: {} seconds", 
-                                 reminder.name, reminder_time, time_diff.num_seconds());
+                        // println!("Reminder '{}' time: {}, diff: {} seconds", 
+                                //  reminder.name, reminder_time, time_diff.num_seconds());
                         
                         // Check if this is a past reminder we've already seen
                         if past_reminders.borrow().contains(&reminder_id) {
-                            println!("Skipping past reminder: {}", reminder.name);
+                            // println!("Skipping past reminder: {}", reminder.name);
                             continue;
                         }
                         
@@ -524,7 +468,7 @@ fn main() {
                                     Err(e) => println!("Failed to send notification: {}", e),
                                 }
                             } else {
-                                println!("Already notified for: {}", reminder.name);
+                                // println!("Already notified for: {}", reminder.name);
                             }
                         } else if time_diff.num_seconds() < 0 {
                             // This reminder is in the past, mark it
@@ -534,7 +478,8 @@ fn main() {
                     } else {
                         println!("Failed to parse reminder time for: {}", reminder.name);
                     }
-                }
+                }                        /*println!("Failed to parse reminder time for: {}", reminder.name);*/
+
             } else {
                 println!("Failed to read reminders");
             }

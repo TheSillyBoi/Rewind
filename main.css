@@ -1,18 +1,37 @@
 label {
-    font-size: 12px;
+    font-size: 16px;
 }
 
-frame {
+/* frame {
     text-align: center;
     border: 1px solid #000000;
 
-}
+}*/
 
 entry {
-    border: 1px solid #ccc;
+    border: 2px solid @theme_fg_color;
 }
 
 calendar {
-    border-radius: 0.5rem;
+    border-radius: 0.75rem;
+
 }
 
+/* frame::hover {
+    border: 10px solid #000000;
+} */
+
+#reminder_frame{
+    padding-top: 4px;
+    background-color: @theme_base_color;
+    /* border: 20px solid #000000; */
+}
+
+#delete {
+    margin-top: 5px;
+}
+
+#TopBarName{
+    background-color: brown;
+
+}
